@@ -1,0 +1,27 @@
+from pydantic import BaseModel, Field
+
+class CustomLocation(BaseModel):
+    lat: float
+    lon: float
+    label: str = ""
+
+class SimulationStartSchema(BaseModel):
+    baseline_type: str = "AMIS-RU"  # "AMIS-RU", "BASELINE-A", "BASELINE-B"
+    disaster_type: str = "FLOOD"  # "FLOOD" or "EARTHQUAKE"
+    corruption_level: float = 0.6  # 0.3, 0.6, 0.9
+    center_lat: float = 37.7749
+    center_lon: float = -122.4194
+    span: float = 0.06  # Bounding box span
+    map_mode: str = "REAL"  # "REAL" or "SYNTHETIC"
+    num_scouts: int = 3
+    num_rescues: int = 3
+    num_zodiacs: int = 0
+    num_helicopters: int = 0
+    num_trucks: int = 0
+    num_cars: int = 0
+    custom_shelters: list[CustomLocation] = Field(default_factory=list)   # [{"lat":..., "lon":..., "label":"..."}]
+    custom_hospitals: list[CustomLocation] = Field(default_factory=list)  # [{"lat":..., "lon":..., "label":"..."}]
+
+class AirdropRequest(BaseModel):
+    node_id: str
+    amount: float = 50.0
