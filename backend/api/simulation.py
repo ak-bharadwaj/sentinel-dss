@@ -80,25 +80,47 @@ def start_simulation(config: SimulationStartSchema):
         span = config.span if config.span else 0.06
         osm_filename = f"osm_{lat_str}_{lon_str}_{span:.4f}.osm"
         osm_path = os.path.join("datasets", osm_filename)
-        
-        # Download if file does not exist or is empty (0 bytes)
-        if not os.path.exists(osm_path) or os.path.getsize(osm_path) == 0:
+
+        import xml.etree.ElementTree as ET
+        import time as _time
+
+        def _validate_osm(path: str) -> bool:
+            """Returns True if the file exists, has content, and is valid XML."""
+            if not os.path.exists(path) or os.path.getsize(path) < 500:
+                return False
+            try:
+                ET.parse(path)
+                return True
+            except Exception:
+                return False
+
+        # If cached file exists but is corrupt, delete it so we re-download cleanly
+        if os.path.exists(osm_path) and not _validate_osm(osm_path):
+            print(f"[OSM] Cached file '{osm_filename}' is corrupt or empty. Deleting and re-downloading...")
+            try:
+                os.remove(osm_path)
+            except Exception as del_err:
+                print(f"[OSM] Could not delete corrupt cache: {del_err}")
+
+        # Download if file does not exist or is empty / corrupt
+        if not _validate_osm(osm_path):
             from backend.world_model.graph_builder import download_osm_data
             downloaded = False
             for attempt in range(2):  # retry once on failure
                 try:
                     print(f"[OSM] Download attempt {attempt + 1}/2 for {lat_str},{lon_str} span={span}")
                     download_osm_data(config.center_lat, config.center_lon, osm_path, span=span)
-                    if os.path.exists(osm_path) and os.path.getsize(osm_path) > 500:
+                    if _validate_osm(osm_path):
                         downloaded = True
-                        print(f"[OSM] Download successful ({os.path.getsize(osm_path)//1024}KB)")
+                        print(f"[OSM] Download successful and verified ({os.path.getsize(osm_path)//1024}KB)")
                         break
                     else:
-                        print(f"[OSM] Downloaded file is empty, retrying...")
+                        print(f"[OSM] Downloaded file is invalid or empty, retrying...")
+                        if os.path.exists(osm_path):
+                            os.remove(osm_path)
                 except Exception as e:
                     print(f"[OSM] Attempt {attempt + 1} failed: {e}")
-                    import time
-                    time.sleep(2)  # wait before retry
+                    _time.sleep(2)  # wait before retry
             if not downloaded:
                 print(f"[OSM] All download attempts failed. Using synthetic grid.")
                 osm_path = None
@@ -528,7 +550,7 @@ def remove_unit(request: dict):
     unit_id = request.get("id")
     unit_type = request.get("type") # "agent" or "node"
     
-    with lock:
+    with simulation_lock:
         if unit_type == "agent":
             if unit_id in simulation_engine.agents:
                 agent = simulation_engine.agents[unit_id]
@@ -550,7 +572,7 @@ def move_unit(request: dict):
     new_lat = request.get("lat")
     new_lon = request.get("lon")
     
-    with lock:
+    with simulation_lock:
         if unit_type == "agent":
             if unit_id in simulation_engine.agents:
                 agent = simulation_engine.agents[unit_id]
