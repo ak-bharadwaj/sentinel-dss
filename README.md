@@ -47,3 +47,7 @@ Open `http://localhost:3000` in your web browser.
 *   **Directed Evacuation Broadcast**: Enabling this mode broadcast offline delta signal packages, guiding citizens to autonomously route to safe havens using unblocked paths, introducing localized road congestion.
 *   **Crowdsourced Stuck Alerts**: Isolated citizens locked by surrounding blockages send low-frequency SMS alerts after 3 steps, automatically updating the EOC belief graph.
 *   **Offline Delta Signaling**: Encodes blocked roads and active havens into a compact text format (under 50 bytes) fit for Cell Broadcast or FM Radio RDS (e.g., `B:N_1_2,N_3_4|H:N_0_3`).
+
+### 🛡️ Robustness & Unit Management Updates
+*   **Robust OSM Graph Validation**: Implemented strict validation checks (verifying `ElementTree` structure and minimum size) on both cached and newly downloaded OpenStreetMap XML files. If a download is truncated or corrupt (e.g., missing node reference errors from Overpass API), the system automatically cleans up the corrupt cache, retries, and falls back cleanly to the synthetic grid without crashing.
+*   **Mid-Simulation Unit Management**: Fixed thread-safety `NameError` bugs in the `/move_unit` and `/remove_unit` endpoints by properly referencing the backend `simulation_lock`. This enables seamless drag-and-drop unit relocation and decommissioning directly from the tactical map during active runs.
