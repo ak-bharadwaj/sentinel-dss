@@ -1,0 +1,33 @@
+# Databases and temporary DB files
+*.db
+*.db-shm
+*.db-wal
+backend/world_state.db
+sentinel.db*
+
+# Dataset OSM files (large XMLs)
+datasets/*.osm
+datasets/
+
+# Python environment and pycache
+__pycache__/
+*.pyc
+.mypy_cache/
+.pytest_cache/
+venv/
+.venv/
+env/
+
+# Next.js build and dev files
+frontend/.next/
+frontend/node_modules/
+node_modules/
+.DS_Store
+
+# Temporary outputs & logs
+*.log
+*.png
+*.txt
+scratch/
+Document1.docx
+chrome-profile-temp/
