@@ -47,7 +47,9 @@ class WorldState:
                 avg_lat = sum(d.get('y', d.get('lat', 0)) for d in nodes_data) / len(nodes_data)
                 avg_lon = sum(d.get('x', d.get('lon', 0)) for d in nodes_data) / len(nodes_data)
                 # Tightened from 0.05 to 0.001 to ensure accurate location selector response
-                if math.hypot(avg_lat - center_lat, avg_lon - center_lon) < 0.001:
+                from backend.config_params.parameters import params
+                threshold = getattr(params, 'location_reset_threshold_deg', 0.001)
+                if math.hypot(avg_lat - center_lat, avg_lon - center_lon) < threshold:
                     print(f"Using cached World Model (mode={self.map_mode}).")
                     from backend.simulation.corruption import corrupt_belief_graph
                     self.belief = corrupt_belief_graph(self.ground_truth, corruption_level)
@@ -96,8 +98,8 @@ class WorldState:
                     triage_immediate=getattr(node, 'triage_immediate', 0),
                     triage_delayed=getattr(node, 'triage_delayed', 0),
                     triage_minor=getattr(node, 'triage_minor', 0),
-                    dist_to_water=getattr(node, 'dist_to_water', 999999.0),
-                    dist_to_coast=getattr(node, 'dist_to_coast', 999999.0),
+                    dist_to_water=getattr(node, 'dist_to_water', getattr(params, 'infinite_distance_m', 999999.0)),
+                    dist_to_coast=getattr(node, 'dist_to_coast', getattr(params, 'infinite_distance_m', 999999.0)),
                     is_tall_building_zone=bool(getattr(node, 'is_tall_building_zone', 0)),
                     last_observed=getattr(node, 'last_observed', datetime.utcnow())
                 )
@@ -116,8 +118,8 @@ class WorldState:
                     triage_immediate=getattr(node, 'triage_immediate', 0),
                     triage_delayed=getattr(node, 'triage_delayed', 0),
                     triage_minor=getattr(node, 'triage_minor', 0),
-                    dist_to_water=getattr(node, 'dist_to_water', 999999.0),
-                    dist_to_coast=getattr(node, 'dist_to_coast', 999999.0),
+                    dist_to_water=getattr(node, 'dist_to_water', getattr(params, 'infinite_distance_m', 999999.0)),
+                    dist_to_coast=getattr(node, 'dist_to_coast', getattr(params, 'infinite_distance_m', 999999.0)),
                     is_tall_building_zone=bool(getattr(node, 'is_tall_building_zone', 0)),
                     last_observed=getattr(node, 'last_observed', datetime.utcnow())
                 )

@@ -20,7 +20,10 @@ def compute_bayesian_update(p_prior: float, observation: str, eta: float) -> flo
         
     if denominator == 0:
         return p
-    return max(1e-4, min(1.0 - 1e-4, numerator / denominator))
+    from backend.config_params.parameters import params
+    min_p = getattr(params, 'min_belief_probability', 1e-4)
+    max_p = getattr(params, 'max_belief_probability', 1.0 - 1e-4)
+    return max(min_p, min(max_p, numerator / denominator))
 
 def apply_scout_observation(
     belief_graph: nx.Graph,
@@ -81,14 +84,17 @@ def apply_scout_observation(
         lon_v = belief_graph.nodes[neighbor].get('lon', 0.0)
         dist_m = haversine_distance(lat_u, lon_u, lat_v, lon_v)
         
-        if dist_m <= max_range:
-            range_ratio = math.exp(-dist_m / max_range)
+        from backend.config_params.parameters import params
+        if dist_m <= max_range and max_range > 0:
+            range_ratio = max(0.0, min(1.0, math.exp(-max(0.0, dist_m) / max(1e-5, max_range))))
             # Fetch visibility and LOS parameters
             edge_visibility = belief_graph.edges[node_id, neighbor].get('visibility_factor', 1.0)
-            line_of_sight = 1.0 if belief_graph.edges[node_id, neighbor].get('has_los', True) else 0.3
+            line_of_sight = 1.0 if belief_graph.edges[node_id, neighbor].get('has_los', True) else getattr(params, 'los_obstruction_factor', 0.3)
             
             # Combine range decay, edge visibility and LOS multipliers
-            gain = range_ratio * edge_visibility * line_of_sight * 0.85
+            decay_gain_factor = getattr(params, 'scout_observation_decay_gain_factor', 0.85)
+            gain = range_ratio * edge_visibility * line_of_sight * decay_gain_factor
             neigh_state = belief_graph.nodes[neighbor].get('p_state_correct', 0.5)
             belief_graph.nodes[neighbor]['p_state_correct'] = max(neigh_state, gain)
+
 

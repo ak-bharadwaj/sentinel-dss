@@ -109,8 +109,10 @@ def get_effective_speed(vehicle_type: str, base_speed: float, water_level: float
                 return base_speed * spec["speed_multiplier"]
                 
         # Standard car flood speed degradation
-        if vehicle_type == "STANDARD_CAR" and water_level > 0.2:
-            factor = max(0.1, 1.0 - (water_level / spec["max_water_depth"]))
+        from backend.config_params.parameters import params
+        if vehicle_type == "STANDARD_CAR" and water_level > getattr(params, 'flood_car_caution_m', 0.15):
+            max_depth = getattr(params, 'flood_car_blocked_m', 0.30)
+            factor = max(0.1, 1.0 - (water_level / max(1e-5, max_depth)))
             return base_speed * spec["speed_multiplier"] * factor
 
     return base_speed * spec["speed_multiplier"]

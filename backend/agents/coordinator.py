@@ -93,7 +93,7 @@ class Coordinator:
         # to prevent straight lines across the ocean.
         targets = [
             n_id for n_id, ig_val in global_ig.items()
-            if ig_val > 0.05 
+            if ig_val > getattr(params, 'scout_ig_threshold', 0.05)
             and n_id != self.base_node
             and belief_graph.nodes[n_id].get('is_coastal', False) == False # Avoid routing agents to coastal boundaries which might cross oceans
         ]
@@ -211,7 +211,10 @@ class Coordinator:
                     
                     # Rational Distance-Penalty calculation (Cost vs Reward)
                     # Non-linear distance scaling forcefully stops blind city-crossing
-                    raw_cost = (dist ** 1.2) - (ig_val * 1000.0)
+                    from backend.config_params.parameters import params
+                    scout_exponent = getattr(params, 'scout_distance_exponent', 1.2)
+                    scout_ig_weight = getattr(params, 'scout_ig_weight', 1000.0)
+                    raw_cost = (dist ** scout_exponent) - (ig_val * scout_ig_weight)
                     candidate_targets.append((target_id, dist, ig_val, raw_cost))
                     
                 candidate_targets.sort(key=lambda x: x[3])
@@ -242,7 +245,8 @@ class Coordinator:
                         continue
                     
                     # Rational Assignment Cost with Overlap Penalty
-                    cost = (dist ** 1.2) - (ig_val * 1000.0) + (overlap_count * 2500.0)
+                    scout_overlap_penalty = getattr(params, 'scout_overlap_penalty', 2500.0)
+                    cost = (dist ** scout_exponent) - (ig_val * scout_ig_weight) + (overlap_count * scout_overlap_penalty)
                     
                     if cost < best_cost:
                         best_cost = cost

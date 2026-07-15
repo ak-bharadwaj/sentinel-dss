@@ -52,14 +52,15 @@ def calculate_distance_to_line_segment(lat: float, lon: float, p1: Tuple[float, 
     if dx == 0 and dy == 0:
         return math.hypot(x - x1, y - y1)
     
-    t = ((x - x1) * dx + (y - y1) * dy) / (dx*dx + dy*dy)
+    denom = dx*dx + dy*dy
+    t = ((x - x1) * dx + (y - y1) * dy) / denom if denom > 1e-12 else 0.0
     t = max(0.0, min(1.0, t))
     
     proj_x = x1 + t * dx
     proj_y = y1 + t * dy
     
-    # Convert degrees to approx meters (1 degree lat ~= 111,000 meters)
-    return math.hypot(x - proj_x, y - proj_y) * 111000.0
+    from backend.config_params.parameters import params
+    return math.hypot(x - proj_x, y - proj_y) * getattr(params, 'degrees_to_meters', 111000.0)
 
 def generate_noise(lat: float, lon: float, scale: float = 100.0) -> float:
     # Simple deterministic noise function
@@ -302,7 +303,8 @@ def load_osm_xml(file_path: str) -> Tuple[List[NodeModel], List[EdgeModel]]:
         # Quick scale for lon to approx degrees to meters (we use the node's lat for cos scale)
         dist_deg, _ = tree.query([lat, lon])
         # Very rough fallback distance in meters
-        return dist_deg * 111000.0
+        from backend.config_params.parameters import params
+        return dist_deg * getattr(params, 'degrees_to_meters', 111000.0)
 
     for child in root.findall("node"):
         if "lat" not in child.attrib or "lon" not in child.attrib:
@@ -443,6 +445,8 @@ def load_osm_xml(file_path: str) -> Tuple[List[NodeModel], List[EdgeModel]]:
                 else:
                     speed_factor = 0.6  # narrow streets
                 
+                is_highway = highway_type in ("motorway", "trunk", "primary", "motorway_link", "trunk_link", "primary_link")
+                
                 edge = EdgeModel(
                     id=f"E_{w_id}_{i}",
                     source=u_id,
@@ -454,6 +458,14 @@ def load_osm_xml(file_path: str) -> Tuple[List[NodeModel], List[EdgeModel]]:
                     last_observed=datetime.utcnow(),
                     name=way_name_raw
                 )
+                edge.is_highway = is_highway
+                # Set highway and elevated attribute on nodes
+                u_node.is_highway = is_highway
+                v_node.is_highway = is_highway
+                if is_highway or is_bridge_edge:
+                    u_node.is_elevated = True
+                    v_node.is_elevated = True
+
                 edge.is_coastal = is_coastal_edge
                 edge.is_bridge = is_bridge_edge
                 # Geometry: slice of the way shape from u_id to v_id for accurate road drawing

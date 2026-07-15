@@ -32,7 +32,9 @@ class EdgeStateTensor:
             e_id = data.get('id', f"{u}_{v}")
             self.edge_index_map[e_id] = idx
             self.edge_ids[idx] = hash(e_id) % 200000000
-            self.travel_time[idx] = data.get('distance', 1.0) / 10.0
+            from backend.config_params.parameters import params
+            speed_ms = getattr(params, 'rescue_speed_ms', 10.0)
+            self.travel_time[idx] = max(1e-3, data.get('distance', 1.0)) / (speed_ms if speed_ms > 0 else 10.0)
             self.water_depth[idx] = max(graph.nodes[u].get('water_level', 0.0), graph.nodes[v].get('water_level', 0.0))
             self.flow_velocity[idx] = 0.0
             self.confidence[idx] = data.get('confidence', 1.0)

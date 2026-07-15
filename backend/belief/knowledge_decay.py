@@ -12,7 +12,9 @@ def decay_confidence(belief_graph: nx.Graph, lambda_decay: float = 0.05) -> None
         p_state = belief_graph.nodes[n_id].get('p_state_correct', 1.0)
         # Exponential decay toward maximum uncertainty (0.5), not absolute zero
         # Formulation: P_new = 0.5 + (P - 0.5) * exp(-lambda)
-        belief_graph.nodes[n_id]['p_state_correct'] = 0.5 + (p_state - 0.5) * math.exp(-lambda_decay)
+        max_uncertainty = getattr(params, 'max_uncertainty_probability', 0.5)
+        new_p = max_uncertainty + (p_state - max_uncertainty) * math.exp(-lambda_decay)
+        belief_graph.nodes[n_id]['p_state_correct'] = max(0.0, min(1.0, new_p))
         
     # 2. Update edge confidences based on endpoint nodes
     for u, v in belief_graph.edges:

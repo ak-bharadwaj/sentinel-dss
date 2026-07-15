@@ -496,18 +496,18 @@ class SimulationEngine:
                                 self.civilian_stuck_timers[n_id] = 0
 
         # Adjust survival decay rate (gamma) and triage exposure scaling per disaster scenario
-        base_gamma = settings.SURVIVAL_DECAY_RATE
+        from backend.config_params.parameters import params
         disaster_upper = self.disaster_type.upper()
         if disaster_upper == "EARTHQUAKE":
-            gamma = base_gamma * 8.0     # 8x faster decay for trapped rubble victims
+            gamma = getattr(params, 'gamma_earthquake', 0.04)
             imm_multiplier = 1.8
             del_multiplier = 1.0
         elif disaster_upper == "CYCLONE":
-            gamma = base_gamma * 3.0     # 3x faster decay for flying debris/wind casualties
+            gamma = getattr(params, 'gamma_cyclone', 0.015)
             imm_multiplier = 1.3
             del_multiplier = 1.2
         else:                            # FLOOD or default
-            gamma = base_gamma * 1.0     # Baseline slow decay
+            gamma = getattr(params, 'gamma_flood', 0.005)
             imm_multiplier = 0.5
             del_multiplier = 0.8
         
@@ -517,7 +517,10 @@ class SimulationEngine:
             p_danger = data.get('p_danger', 0.0)
             if pop > 0:
                 if p_danger > 0.5:
-                    new_pop = int(pop * max(0.0, 1.0 - (gamma * p_danger)))
+                    # Scale gamma (decay per minute) by delta_t in minutes
+                    delta_t = float(settings.TIMESTEP_DURATION)
+                    decay_factor = gamma * (delta_t / 60.0) * p_danger
+                    new_pop = int(pop * max(0.0, 1.0 - decay_factor))
                     pop = new_pop
                     world_state.ground_truth.nodes[n_id]['population'] = pop
                     
@@ -905,7 +908,7 @@ class SimulationEngine:
                 if distance <= 0.0:
                     agent.progress_on_edge = 1.0
                 else:
-                    agent.progress_on_edge += (effective_speed * delta_t) / distance
+                    agent.progress_on_edge = min(1.0, agent.progress_on_edge + (effective_speed * delta_t) / distance)
                 
                 if agent.progress_on_edge >= 1.0:
                     # Traveled the segment

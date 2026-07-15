@@ -97,7 +97,7 @@ def evaluate_observation_quality(context: ObservationContext) -> SensorObservati
 
     # 2. Visibility penalty (degradation multiplication model assumption)
     if context.sensor_type in OPTICAL_SENSORS:
-        vis_ratio = min(1.0, context.visibility_km / BASE_VISIBILITY_REF_KM)
+        vis_ratio = max(0.0, min(1.0, context.visibility_km / max(1e-5, BASE_VISIBILITY_REF_KM)))
         if context.smoke_present:
             vis_ratio *= SMOKE_VISIBILITY_FACTOR
             reasons.append("Visibility obscured by smoke")
@@ -110,7 +110,7 @@ def evaluate_observation_quality(context: ObservationContext) -> SensorObservati
     # 3. Distance decay
     max_range = SENSOR_MAX_RANGE_M.get(context.sensor_type, 100.0)
     if context.distance_m > 0:
-        dist_ratio = max(0.0, 1.0 - (context.distance_m / max_range))
+        dist_ratio = max(0.0, min(1.0, 1.0 - (max(0.0, context.distance_m) / max(1e-5, max_range))))
         dist_mult = 0.7 + 0.3 * dist_ratio
         eta *= dist_mult
         if dist_mult < 0.90:
