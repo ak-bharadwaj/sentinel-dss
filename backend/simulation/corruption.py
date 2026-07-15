@@ -9,8 +9,8 @@ def corrupt_belief_graph(ground_truth: nx.Graph, corruption_level: float) -> nx.
     
     # 1. Corrupt nodes
     nodes = list(belief.nodes)
-    num_nodes_to_corrupt = int(len(nodes) * corruption_level)
-    nodes_to_corrupt = set(random.sample(nodes, num_nodes_to_corrupt))
+    num_nodes_to_corrupt = min(len(nodes), max(0, int(len(nodes) * corruption_level)))
+    nodes_to_corrupt = set(random.sample(nodes, num_nodes_to_corrupt)) if num_nodes_to_corrupt > 0 else set()
     
     for n_id in nodes:
         if n_id in nodes_to_corrupt:
@@ -32,8 +32,8 @@ def corrupt_belief_graph(ground_truth: nx.Graph, corruption_level: float) -> nx.
 
     # 2. Corrupt edges
     edges = list(belief.edges)
-    num_edges_to_corrupt = int(len(edges) * corruption_level)
-    edges_to_corrupt = set(random.sample(edges, num_edges_to_corrupt))
+    num_edges_to_corrupt = min(len(edges), max(0, int(len(edges) * corruption_level)))
+    edges_to_corrupt = set(random.sample(edges, num_edges_to_corrupt)) if num_edges_to_corrupt > 0 else set()
     
     for u, v in belief.edges:
         # Determine if edge is near a safe haven
