@@ -17,7 +17,9 @@ def corrupt_belief_graph(ground_truth: nx.Graph, corruption_level: float) -> nx.
             # Invert or randomize danger belief
             gt_danger = belief.nodes[n_id].get('p_danger', 0.0)
             belief.nodes[n_id]['p_danger'] = 1.0 - gt_danger
-            belief.nodes[n_id]['p_state_correct'] = max(0.05, 1.0 - corruption_level)
+            from backend.config_params.parameters import params
+            min_p = getattr(params, 'min_belief_probability', 1e-4)
+            belief.nodes[n_id]['p_state_correct'] = max(min_p, 1.0 - corruption_level)
             
             # Mismatch status
             if belief.nodes[n_id]['p_danger'] > 0.5:
