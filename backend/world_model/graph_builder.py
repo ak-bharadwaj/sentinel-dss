@@ -470,17 +470,19 @@ def load_osm_xml(file_path: str) -> Tuple[List[NodeModel], List[EdgeModel]]:
                 edge.is_bridge = is_bridge_edge
                 # Geometry: slice of the way shape from u_id to v_id for accurate road drawing
                 try:
-                    u_pos = nd_refs.index(u_id)
-                    v_pos = nd_refs.index(v_id, u_pos)
+                    # Precompute lookup dictionary for O(1) coordinate index lookups
+                    nd_ref_index = {ref_id: ref_idx for ref_idx, ref_id in enumerate(nd_refs)}
+                    u_pos = nd_ref_index[u_id]
+                    v_pos = nd_ref_index[v_id]
                     shape_slice = [
                         [nodes_map[nd_refs[k]].lat, nodes_map[nd_refs[k]].lon]
-                        for k in range(u_pos, v_pos + 1)
+                        for k in range(min(u_pos, v_pos), max(u_pos, v_pos) + 1)
                         if nd_refs[k] in nodes_map
                     ]
                     edge.geometry = shape_slice if len(shape_slice) >= 2 else [
                         [u_node.lat, u_node.lon], [v_node.lat, v_node.lon]
                     ]
-                except (ValueError, IndexError):
+                except (KeyError, IndexError):
                     edge.geometry = [[u_node.lat, u_node.lon], [v_node.lat, v_node.lon]]
                 edges.append(edge)
                 
@@ -706,15 +708,19 @@ def load_osm_xml(file_path: str) -> Tuple[List[NodeModel], List[EdgeModel]]:
             # Enforce 250m spatial spacing (approx 0.0022 degrees) from other zones
             too_close = False
             for existing in selected_zones:
+                from backend.config_params.parameters import params
+                threshold_deg = getattr(params, 'spatial_spacing_threshold_deg', 0.0022)
                 dist = math.hypot(candidate.lat - existing.lat, candidate.lon - existing.lon)
-                if dist < 0.0022:
+                if dist < threshold_deg:
                     too_close = True
                     break
             
             if not too_close:
                 for existing in hospitals_and_shelters:
+                    from backend.config_params.parameters import params
+                    threshold_deg = getattr(params, 'spatial_spacing_threshold_deg', 0.0022)
                     dist = math.hypot(candidate.lat - existing.lat, candidate.lon - existing.lon)
-                    if dist < 0.0022:
+                    if dist < threshold_deg:
                         too_close = True
                         break
             
@@ -731,7 +737,7 @@ def load_osm_xml(file_path: str) -> Tuple[List[NodeModel], List[EdgeModel]]:
         if n.node_type in ("BRIDGE", "JUNCTION"):
             n.population = 0
 
-    return list(nodes_map.values()), edges
+    return nodes, edges
 
 
 def download_osm_data(lat: float, lon: float, filepath: str, span: float = 0.006) -> None:
@@ -784,6 +790,7 @@ out body;"""
             # 180-second timeout for large city-scale OSM downloads
             with urllib.request.urlopen(req, timeout=180) as response, open(filepath, 'wb') as out_file:
                 out_file.write(response.read())
+            print(f"OSM road data successfully cached at {filepath}")
             return  # Success!
         except Exception as e:
             print(f"Failed downloading from {url}: {e}")
@@ -792,4 +799,4 @@ out body;"""
             
     # If all endpoints fail, throw the last exception
     raise last_exception
-    print(f"OSM road data successfully cached at {filepath}")
+

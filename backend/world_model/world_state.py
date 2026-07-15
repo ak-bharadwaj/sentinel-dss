@@ -65,9 +65,11 @@ class WorldState:
             self.nodes_dict.clear()
             self.edges_dict.clear()
 
-            # 1. Clear database schema and recreate it cleanly
-            Base.metadata.drop_all(bind=engine)
-            Base.metadata.create_all(bind=engine)
+            # 1. Clear database tables cleanly instead of expensive dropping of metadata
+            from sqlalchemy import text
+            db.execute(text("DELETE FROM edges"))
+            db.execute(text("DELETE FROM nodes"))
+            db.commit()
             
             self.map_mode = requested_mode
 
@@ -397,34 +399,50 @@ class WorldState:
     def get_nearest_node(self, lat: float, lon: float) -> Optional[Any]:
         """Find nearest node using spatial KD-tree (O(log V)) when scipy is available.
         Falls back to linear scan O(V) otherwise.
-        """
+        """        # Lazy build spatial tree structure to avoid costly O(V) queries or O(V) reconstructions on every step
+        if not hasattr(self, '_spatial_tree') or self._spatial_tree is None:
+            try:
+                import numpy as np
+                from scipy.spatial import cKDTree  # type: ignore
+                nodes_data = [(n_id, d) for n_id, d in self.belief.nodes(data=True)
+                              if d.get('lat') is not None or d.get('y') is not None]
+                if nodes_data:
+                    coords = np.array([
+                        (d.get('lat', d.get('y', 0.0)), d.get('lon', d.get('x', 0.0)))
+                        for _, d in nodes_data
+                    ])
+                    self._spatial_tree = cKDTree(coords)
+                    self._spatial_nodes = nodes_data
+                else:
+                    self._spatial_tree = None
+                    self._spatial_nodes = []
+            except (ImportError, Exception):
+                self._spatial_tree = None
+                self._spatial_nodes = []
+        
+        if hasattr(self, '_spatial_tree') and self._spatial_tree is not None:
+            try:
+                _, idx = self._spatial_tree.query([lat, lon])
+                return self._spatial_nodes[idx][0]
+            except Exception:
+                pass
+                
         from backend.world_model.graph_builder import haversine_distance
         nodes_data = [(n_id, d) for n_id, d in self.belief.nodes(data=True)
                       if d.get('lat') is not None or d.get('y') is not None]
         if not nodes_data:
             return None
+            
+        best_id = None
+        best_dist = float('inf')
+        for node_id, node_data in nodes_data:
+            n_lat = node_data.get('lat', node_data.get('y', 0.0))
+            n_lon = node_data.get('lon', node_data.get('x', 0.0))
+            d = haversine_distance(n_lat, n_lon, lat, lon)
+            if d < best_dist:
+                best_dist = d
+                best_id = node_id
+        return best_id
 
-        try:
-            import numpy as np
-            from scipy.spatial import cKDTree  # type: ignore
-            coords = np.array([
-                (d.get('lat', d.get('y', 0.0)), d.get('lon', d.get('x', 0.0)))
-                for _, d in nodes_data
-            ])
-            tree = cKDTree(coords)
-            _, idx = tree.query([lat, lon])
-            return nodes_data[idx][0]
-        except ImportError:
-            # Fallback: linear scan
-            best_id = None
-            best_dist = float('inf')
-            for node_id, node_data in nodes_data:
-                n_lat = node_data.get('lat', node_data.get('y', 0.0))
-                n_lon = node_data.get('lon', node_data.get('x', 0.0))
-                d = haversine_distance(n_lat, n_lon, lat, lon)
-                if d < best_dist:
-                    best_dist = d
-                    best_id = node_id
-            return best_id
 
 world_state = WorldState()
