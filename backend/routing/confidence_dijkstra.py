@@ -2,6 +2,26 @@ import networkx as nx  # type: ignore
 from backend.agents.fleet_config import get_effective_speed
 from typing import Optional, Tuple, List, Dict, Any
 
+import networkx as nx  # type: ignore
+from backend.agents.fleet_config import get_effective_speed
+from typing import Optional, Tuple, List, Dict, Any
+from backend.routing.cost_config import WEIGHTS, SAFE_ROUTE_MULTIPLIER, REFERENCE_TIME_S
+from backend.routing.helicopter_model import helicopter_edge_cost
+
+def get_vehicle_risk(node_data: dict, vehicle_type: str) -> float:
+    """Extract vehicle-specific hazard danger probabilities from separate hazard layers."""
+    # Projection matrix representation mapping vehicle index to relevant hazards
+    # Boat cares only about structural, Helicopter cares about fire/wind, Cars care about flood/structural
+    if vehicle_type == "ZODIAC_BOAT":
+        return node_data.get('p_structural', node_data.get('p_danger', 0.0))
+    elif vehicle_type == "HIGH_WATER_TRUCK":
+        return node_data.get('p_structural', node_data.get('p_danger', 0.0))
+    elif vehicle_type == "HELICOPTER":
+        return max(node_data.get('p_fire', 0.0), node_data.get('p_wind', 0.0))
+    else:  # STANDARD_CAR
+        return max(node_data.get('p_flood', node_data.get('p_danger', 0.0)),
+                   node_data.get('p_structural', node_data.get('p_danger', 0.0)))
+
 def calculate_edge_cost(graph: nx.Graph, u: str, v: str, edge_data: Dict[str, Any], vehicle_type: str = "STANDARD_CAR", disaster_type: str = "FLOOD") -> float:
     node_u = graph.nodes[u]
     node_v = graph.nodes[v]
@@ -10,44 +30,46 @@ def calculate_edge_cost(graph: nx.Graph, u: str, v: str, edge_data: Dict[str, An
     if node_u.get('status') == 'BLOCKED' or node_v.get('status') == 'BLOCKED':
         if vehicle_type != "HELICOPTER":
             return 1e9
-            
+
     # Retrieve water levels
     wl_u = node_u.get('water_level', 0.0)
     wl_v = node_v.get('water_level', 0.0)
     water_level = max(wl_u, wl_v)
     is_blocked = edge_data.get('blocked', False)
     
-    # Average danger for helicopter flight constraints
-    p_danger_edge = (node_u.get('p_danger', 0.0) + node_v.get('p_danger', 0.0)) / 2.0
+    distance = edge_data.get('distance', 1.0)
+    
+    # Helicopters fly directly over everything using custom operational bounds
+    if vehicle_type == "HELICOPTER":
+        from backend.simulation.engine import simulation_engine
+        w_data = getattr(simulation_engine, 'weather', None)
+        return helicopter_edge_cost(distance, node_u, node_v, w_data)
+        
+    p_danger_edge = (get_vehicle_risk(node_u, vehicle_type) + get_vehicle_risk(node_v, vehicle_type)) / 2.0
     
     # 2. Check speed traversability using fleet config helper
     eff_speed = get_effective_speed(vehicle_type, 10.0, water_level, is_blocked, disaster_type=disaster_type, p_danger=p_danger_edge)
     if eff_speed <= 0.0:
         return 1e9  # impassable
         
-    distance = edge_data.get('distance', 1.0)
-    
-    # Helicopters fly directly over everything
-    if vehicle_type == "HELICOPTER":
-        return distance / 2.5
-        
     speed_factor = edge_data.get('speed_factor', 1.0)
         
     # Calculate travel-time cost equivalent
     effective_speed_factor = (eff_speed / 10.0) * speed_factor
-    time_cost = distance / max(0.01, effective_speed_factor)
+    time_cost_raw = distance / max(0.01, effective_speed_factor)
+    time_cost_norm = time_cost_raw / REFERENCE_TIME_S
     
-    p_danger_edge = (node_u.get('p_danger', 0.0) + node_v.get('p_danger', 0.0)) / 2.0
     confidence_edge = (node_u.get('p_state_correct', 1.0) + node_v.get('p_state_correct', 1.0)) / 2.0
     
     from backend.simulation.engine import simulation_engine
     is_safe_route = getattr(simulation_engine, 'safe_route_mode', False)
-    risk_multiplier = 500.0 if is_safe_route else 100.0
+    risk_mult = SAFE_ROUTE_MULTIPLIER if is_safe_route else 1.0
     
-    risk_penalty = risk_multiplier * p_danger_edge
-    uncertainty_penalty = 100.0 * (1.0 - confidence_edge)
+    risk_penalty = WEIGHTS["w_risk"] * p_danger_edge * risk_mult
+    uncertainty_penalty = WEIGHTS["w_uncertainty"] * (1.0 - confidence_edge)
     
-    return time_cost + risk_penalty + uncertainty_penalty
+    return time_cost_norm + risk_penalty + uncertainty_penalty
+
 
 def update_grid_edge_costs(graph: nx.Graph) -> None:
     """Fallback cache update (kept for interface compatibility)."""

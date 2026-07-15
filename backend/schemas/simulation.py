@@ -19,9 +19,11 @@ class SimulationStartSchema(BaseModel):
     num_helicopters: int = 0
     num_trucks: int = 0
     num_cars: int = 0
+    magnitude_mw: float = 6.5  # Seismic / meteorological intensity parameters
     custom_shelters: list[CustomLocation] = Field(default_factory=list)   # [{"lat":..., "lon":..., "label":"..."}]
     custom_hospitals: list[CustomLocation] = Field(default_factory=list)  # [{"lat":..., "lon":..., "label":"..."}]
 
 class AirdropRequest(BaseModel):
     node_id: str
     amount: float = 50.0
+

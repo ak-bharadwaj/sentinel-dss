@@ -37,16 +37,35 @@ def get_vulnerability_multiplier(node_data: Dict[str, Any]) -> float:
         return VULNERABILITY_MULTIPLIERS['LOW']         # People on bridges can move
     return VULNERABILITY_MULTIPLIERS['STANDARD']
 
-def calculate_ev(p_danger: float, population: int, reachability: float, t_arrival_minutes: float, vulnerability_multiplier: float = 1.0) -> float:
-    """Computes Greedy Expected Value Assignment with triage vulnerability weighting.
+def calculate_ev(
+    p_danger: float,
+    population: int,
+    reachability: float,
+    t_arrival_minutes: float,
+    vulnerability_multiplier: float = 1.0,
+    p_state_correct: float = 0.5,
+    disaster_type: str = "FLOOD"
+) -> float:
+    """Computes Uncertainty-Weighted Expected Value Assignment.
     Formula:
       S_expected = Population * exp(-gamma * p_danger * t_arrival)
-      EV = p_danger * S_expected * Reachability * VulnerabilityMultiplier
+      EV = p_state_correct * p_danger * S_expected * Reachability * VulnerabilityMultiplier
     """
-    gamma = settings.SURVIVAL_DECAY_RATE
+    from backend.config_params.parameters import params
+    # Resolve decay constant based on disaster type
+    disaster_upper = disaster_type.upper()
+    if disaster_upper == "EARTHQUAKE":
+        gamma = params.gamma_earthquake
+    elif disaster_upper == "CYCLONE":
+        gamma = params.gamma_cyclone
+    elif disaster_upper == "WILDFIRE":
+        gamma = params.gamma_wildfire
+    else:
+        gamma = params.gamma_flood
+
     # Survival decay: expected survivors remaining at time of arrival
     s_expected = population * math.exp(-gamma * p_danger * t_arrival_minutes)
     
-    # Expected value of rescue, scaled by population vulnerability class
-    ev = p_danger * s_expected * reachability * vulnerability_multiplier
+    # Expected value of rescue, scaled by population vulnerability and discounted by epistemic confidence
+    ev = p_state_correct * p_danger * s_expected * reachability * vulnerability_multiplier
     return ev

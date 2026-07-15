@@ -61,8 +61,9 @@ def _estimate_elevation(lat: float, lon: float) -> float:
         noise = math.sin(lat * 65) * math.cos(lon * 65) * 6.0
         return max(1.0, base_elev + noise)
     else:
-        # Generic: slightly random terrain
-        return max(1.0, 40.0 + math.sin(lat * 55) * math.cos(lon * 55) * 20.0)
+        # Generic: flat coastal floodplain with slight rise (modeling assumption fallback)
+        dist_from_coast = min(abs(lat - 37.0), abs(lon - 72.0))
+        return max(1.0, 8.0 + dist_from_coast * 200.0)
 
 def get_node_elevation(lat: float, lon: float) -> float:
     """Get elevation for a node, using cache then fallback estimate."""
@@ -144,13 +145,19 @@ class FloodModule(object):
             elev_u = u_data.get('elevation', 50.0)
             elev_v = v_data.get('elevation', 50.0)
             
-            # Flow from u to v (downward elevation, or pressure differential if levels differ significantly)
-            if w_u > w_v and elev_u >= elev_v:
-                flow = (w_u - w_v) * 0.12
+            # Flow from high total head (elevation + water height) to low total head
+            head_u = elev_u + w_u
+            head_v = elev_v + w_v
+            head_diff = head_u - head_v
+            
+            if head_diff > 0.0 and w_u > 0.0:
+                # Water flows from u to v
+                flow = min(w_u, head_diff * 0.12)
                 water_diffs[u] -= flow
                 water_diffs[v] += flow
-            elif w_v > w_u and elev_v >= elev_u:
-                flow = (w_v - w_u) * 0.12
+            elif head_diff < 0.0 and w_v > 0.0:
+                # Water flows from v to u
+                flow = min(w_v, -head_diff * 0.12)
                 water_diffs[v] -= flow
                 water_diffs[u] += flow
 
@@ -158,22 +165,20 @@ class FloodModule(object):
         for n_id, diff in water_diffs.items():
             graph.nodes[n_id]['water_level'] = max(0.0, graph.nodes[n_id].get('water_level', 0.0) + diff)
 
-        # 3. Check for flood thresholds and update statuses/blockages
+        from backend.config_params.parameters import params
         for n_id, data in graph.nodes(data=True):
             next_water = data.get('water_level', 0.0)
             node_type = data.get('node_type', 'ROAD')
             current_status = data.get('status', 'SAFE')
             
-            if next_water > 15.0 and current_status not in ("FLOODED", "COMPROMISED"):
-                # FIX S2: Hospitals and shelters now flood too, but become COMPROMISED
-                # (still physically flooded, but tracked differently to allow evacuation override logic)
+            # Using 0.30m threshold for road impassability (flood_car_blocked_m)
+            if next_water > params.flood_car_blocked_m and current_status not in ("FLOODED", "COMPROMISED"):
                 if node_type in ("HOSPITAL", "SHELTER"):
                     data['status'] = "COMPROMISED"
                     data['p_danger'] = min(1.0, data.get('p_danger', 0.5) + 0.4)
                 else:
                     data['status'] = "FLOODED"
                     data['p_danger'] = 1.0
-                    # Block all roads into/out of this flooded zone
                     for neighbor in list(graph.neighbors(n_id)):
                         if not graph.has_edge(n_id, neighbor):
                             continue
@@ -182,16 +187,14 @@ class FloodModule(object):
                             graph.edges[n_id, neighbor]['confidence'] = 1.0
                             newly_blocked_edges.append((n_id, neighbor))
                         
-        # 4. Bridge-specific closures — FIX S3: gate on water level, not hardcoded step count
+        # 4. Bridge-specific closures — closes when water exceeds bridge structural height limit
         for u, v, edge_data in graph.edges(data=True):
             if not edge_data.get('is_bridge') or edge_data.get('blocked'):
                 continue
-            # Get water level at either endpoint
             wl_u = graph.nodes[u].get('water_level', 0.0)
             wl_v = graph.nodes[v].get('water_level', 0.0)
             max_wl = max(wl_u, wl_v)
-            # Bridge closes when water level exceeds structural threshold (20m equivalent units)
-            if max_wl > 20.0:
+            if max_wl > params.flood_bridge_blocked_m:
                 edge_data['blocked'] = True
                 edge_data['confidence'] = 1.0
                 newly_blocked_edges.append((u, v))

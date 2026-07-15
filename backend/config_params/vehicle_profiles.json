@@ -1,0 +1,37 @@
+{
+  "STANDARD_CAR": {
+    "speed_multiplier": 1.0,
+    "capacity": 50,
+    "max_water_depth": 1.5,
+    "ignores_blockage": false,
+    "blockage_penalty": 1.0,
+    "water_traversal_factor": 0.05,
+    "label": "Standard Rescue Car"
+  },
+  "ZODIAC_BOAT": {
+    "speed_multiplier": 1.2,
+    "capacity": 25,
+    "max_water_depth": 99.0,
+    "ignores_blockage": false,
+    "blockage_penalty": 1.0,
+    "min_water_depth": 2.0,
+    "land_speed_penalty": 0.1,
+    "label": "Zodiac Evac Boat"
+  },
+  "HIGH_WATER_TRUCK": {
+    "speed_multiplier": 0.8,
+    "capacity": 40,
+    "max_water_depth": 8.0,
+    "ignores_blockage": false,
+    "blockage_penalty": 0.5,
+    "label": "High-Water Rescue Truck"
+  },
+  "HELICOPTER": {
+    "speed_multiplier": 2.5,
+    "capacity": 15,
+    "max_water_depth": 99.0,
+    "ignores_blockage": true,
+    "blockage_penalty": 0.0,
+    "label": "Air Rescue Helicopter"
+  }
+}

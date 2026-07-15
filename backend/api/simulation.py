@@ -184,10 +184,31 @@ def start_simulation(config: SimulationStartSchema):
     # 2. Compute priors based on disaster type
     if config.disaster_type.upper() == "EARTHQUAKE":
         from backend.disaster.earthquake import EarthquakeModule
-        module = EarthquakeModule()
+        module = EarthquakeModule(magnitude_mw=config.magnitude_mw)
     elif config.disaster_type.upper() == "CYCLONE":
+        # Check if the region has any coast nearby (within 5 km)
+        has_coast = any(
+            data.get('dist_to_coast', 999999.0) < 5000.0
+            for n, data in world_state.ground_truth.nodes(data=True)
+        )
+        if not has_coast:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=400,
+                detail="Cyclone disaster mode is only allowed for coastal regions (within 5km of ocean/sea)."
+            )
         from backend.disaster.cyclone import CycloneModule
-        module = CycloneModule()
+        module = CycloneModule(wind_speed=config.magnitude_mw * 25.0)  # Map slider input to wind speed profile
+    elif config.disaster_type.upper() == "WILDFIRE":
+        from backend.disaster.wildfire import WildfireModule
+        # Use weather metadata to configure wind parameters
+        wind_ms = 8.0
+        wind_dir = 225.0
+        if weather_data and 'current_weather' in weather_data:
+            cw = weather_data['current_weather']
+            wind_ms = cw.get('windspeed', 28.8) / 3.6  # convert km/h to m/s
+            wind_dir = cw.get('winddirection', 225.0)
+        module = WildfireModule(wind_speed_ms=wind_ms, wind_direction_deg=wind_dir)
     else:
         from backend.disaster.flood import FloodModule
         module = FloodModule()

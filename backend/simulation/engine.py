@@ -42,6 +42,7 @@ class SimulationEngine:
         self.last_telemetry: Dict[str, Any] = {
             "physics_ms": 0.0,
             "belief_ms": 0.0,
+            "tensor_ms": 0.0,
             "decision_ms": 0.0,
             "allocation_ms": 0.0,
             "routing_ms": 0.0,
@@ -58,6 +59,7 @@ class SimulationEngine:
         self.total_survivors_saved: int = 0
         self.initial_total_population: int = 0
         self.weather: Any = None
+        self.world_version: int = 0
         self.history: List[Dict[str, Any]] = []  # time-series logs
         
         # Strategic and Civilian Evacuation settings (Phase 2)
@@ -396,7 +398,8 @@ class SimulationEngine:
             print("SIMULATION PAUSED: Awaiting strategic decision resolution.")
             return
         self.simulation_time += 1
-        print(f"DEBUG ENGINE STEP: {self.simulation_time}", flush=True)
+        self.world_version += 1
+        print(f"DEBUG ENGINE STEP: {self.simulation_time} (World Version: {self.world_version})", flush=True)
         delta_t = settings.TIMESTEP_DURATION
         gamma = settings.SURVIVAL_DECAY_RATE
         
@@ -569,6 +572,21 @@ class SimulationEngine:
                 world_state.belief.edges[u, v]['blocked'] = True
                 world_state.belief.edges[u, v]['confidence'] = 1.0
                 self.add_event(f"[{self.simulation_time}m] 🚨 STRUCTURAL FAILURE: road {u} ↔ {v} collapsed due to seismic aftershocks!")
+        elif self.disaster_type.upper() == "WILDFIRE" and self.active_baseline != "BASELINE-A":
+            from backend.disaster.wildfire import WildfireModule
+            wind_ms = 8.0
+            wind_dir = 225.0
+            if self.weather and 'current_weather' in self.weather:
+                cw = self.weather['current_weather']
+                wind_ms = cw.get('windspeed', 28.8) / 3.6
+                wind_dir = cw.get('winddirection', 225.0)
+            wf_mod = WildfireModule(wind_speed_ms=wind_ms, wind_direction_deg=wind_dir)
+            newly_blocked = wf_mod.update_simulation_step(world_state.ground_truth, self.simulation_time)
+            for u, v in newly_blocked:
+                # Sync blockages to belief
+                world_state.belief.edges[u, v]['blocked'] = True
+                world_state.belief.edges[u, v]['confidence'] = 1.0
+                self.add_event(f"[{self.simulation_time}m] 🚨 ROAD CLOSED: road {u} ↔ {v} is blocked by active wildfire front!")
 
         # --- HAVEN RESOURCE DECAY ---
         for n_id, data in world_state.ground_truth.nodes(data=True):
@@ -649,14 +667,32 @@ class SimulationEngine:
             # Baseline-A operates on frozen/no decay assumption
             decay_confidence(world_state.belief, settings.KNOWLEDGE_DECAY_RATE)
 
-        # Precompute edge costs for fast routing
+        # Precompute edge costs for fast routing with dynamic congestion multiplier (BPR function)
         from backend.routing.confidence_dijkstra import calculate_edge_cost
+        from backend.routing.cost_config import BPR_ALPHA, BPR_BETA, ROAD_CAPACITIES
+        
+        # Calculate active vehicle flow count per edge
+        edge_flows = {}
+        for agent in self.agents.values():
+            if agent.status == AgentStatus.MOVING and agent.current_node and agent.next_node:
+                edge_key = tuple(sorted((agent.current_node, agent.next_node)))
+                edge_flows[edge_key] = edge_flows.get(edge_key, 0) + 1
+
         for u, v, d in world_state.belief.edges(data=True):
-            d['cost_STANDARD_CAR'] = calculate_edge_cost(world_state.belief, u, v, d, 'STANDARD_CAR', disaster_type=self.disaster_type)
-            d['cost_ZODIAC_BOAT'] = calculate_edge_cost(world_state.belief, u, v, d, 'ZODIAC_BOAT', disaster_type=self.disaster_type)
-            d['cost_HIGH_WATER_TRUCK'] = calculate_edge_cost(world_state.belief, u, v, d, 'HIGH_WATER_TRUCK', disaster_type=self.disaster_type)
-            d['cost_HELICOPTER'] = calculate_edge_cost(world_state.belief, u, v, d, 'HELICOPTER', disaster_type=self.disaster_type)
-            d['cost_SCOUT_CAR'] = calculate_edge_cost(world_state.belief, u, v, d, 'SCOUT_CAR', disaster_type=self.disaster_type)
+            # Compute dynamic congestion factor
+            edge_key = tuple(sorted((u, v)))
+            flow = edge_flows.get(edge_key, 0)
+            road_type = d.get('highway', 'residential')
+            capacity = ROAD_CAPACITIES.get(road_type, 400)
+            
+            # travel_time_factor = 1 + alpha * (flow/capacity)^beta
+            congestion_multiplier = 1.0 + BPR_ALPHA * ((flow / capacity) ** BPR_BETA)
+            
+            d['cost_STANDARD_CAR'] = calculate_edge_cost(world_state.belief, u, v, d, 'STANDARD_CAR', disaster_type=self.disaster_type) * congestion_multiplier
+            d['cost_ZODIAC_BOAT'] = calculate_edge_cost(world_state.belief, u, v, d, 'ZODIAC_BOAT', disaster_type=self.disaster_type) * congestion_multiplier
+            d['cost_HIGH_WATER_TRUCK'] = calculate_edge_cost(world_state.belief, u, v, d, 'HIGH_WATER_TRUCK', disaster_type=self.disaster_type) * congestion_multiplier
+            d['cost_HELICOPTER'] = calculate_edge_cost(world_state.belief, u, v, d, 'HELICOPTER', disaster_type=self.disaster_type) * congestion_multiplier
+            d['cost_SCOUT_CAR'] = calculate_edge_cost(world_state.belief, u, v, d, 'SCOUT_CAR', disaster_type=self.disaster_type) * congestion_multiplier
             
         # Reset and compute High-Value Targets (HVTs) using counter-factual routing
         for u, v, d in world_state.belief.edges(data=True):
@@ -698,8 +734,17 @@ class SimulationEngine:
         except Exception as ex:
             print(f"[HVT] Error running counter-factual analysis: {ex}")
 
-        # Dynamically Recompile Vector Graph Matrix
+        # Dynamically Recompile Vector Graph Matrix and DEST edge state tensors
+        t_tensor_start = time.perf_counter()
         gmm.compile_graph_to_tensor(world_state.belief)
+        
+        # Initialize DEST tensor if not yet allocated
+        if not hasattr(world_state, 'edge_state_tensor'):
+            from backend.world_model.edge_state_tensor import EdgeStateTensor
+            world_state.edge_state_tensor = EdgeStateTensor(len(world_state.belief.edges))
+        world_state.edge_state_tensor.sync_from_graph(world_state.belief, self.simulation_time)
+        t_tensor_end = time.perf_counter()
+        self.last_telemetry["tensor_ms"] = (t_tensor_end - t_tensor_start) * 1000
 
         t_belief_end = time.perf_counter()
         self.last_telemetry["belief_ms"] = (t_belief_end - t_belief_start) * 1000
@@ -772,6 +817,15 @@ class SimulationEngine:
                 agent.status = AgentStatus.MOVING
                 agent.progress_on_edge = 0.0
                 agent.next_node = None
+                
+                # Fetch UWEV explainability attributes to feed Explain AI Panel
+                ev = assign.get('ev', 0.0)
+                t_arrival = assign.get('distance', 0.0) / 10.0 / 60.0  # approximate time minutes
+                self.add_xai_event(
+                    action=f"Rescue team {agent.id} dispatched to zone {world_state.get_node_human_name(agent.target_node)}",
+                    reason=f"Mission expected utility is {ev:.2f}. Est travel time: {t_arrival:.1f} min. souls: {world_state.belief.nodes[agent.target_node].get('population', 0)}",
+                    confidence=world_state.belief.nodes[agent.target_node].get('p_state_correct', 1.0)
+                )
 
         t_alloc_end = time.perf_counter()
         self.last_telemetry["allocation_ms"] = (t_alloc_end - t_alloc_start) * 1000

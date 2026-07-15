@@ -1,0 +1,14 @@
+{
+  "FLOOD": {
+    "base_gamma": 0.002
+  },
+  "EARTHQUAKE": {
+    "base_gamma": 0.016
+  },
+  "CYCLONE": {
+    "base_gamma": 0.010
+  },
+  "WILDFIRE": {
+    "base_gamma": 0.050
+  }
+}

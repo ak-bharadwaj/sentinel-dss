@@ -103,7 +103,11 @@ def allocate_rescue_teams(belief_graph: nx.Graph, idle_teams: list, target_nodes
                     overlap_count += 1
             
             vulnerability_multiplier = get_vulnerability_multiplier(target_data)
-            ev = calculate_ev(p_danger, pop, reachability, t_arrival, vulnerability_multiplier)
+            p_state_correct = target_data.get('p_state_correct', 0.5)
+            from backend.simulation.engine import simulation_engine
+            dtype = getattr(simulation_engine, 'disaster_type', 'FLOOD')
+            
+            ev = calculate_ev(p_danger, pop, reachability, t_arrival, vulnerability_multiplier, p_state_correct, dtype)
             ev -= (overlap_count * 8.0)
             
             if ev > best_ev:

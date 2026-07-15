@@ -1,18 +1,28 @@
 import math
+import random
 import networkx as nx
+from backend.world_model.graph_builder import haversine_distance
 
 class CycloneModule(object):
-    def __init__(self, wind_speed: float = 120.0):
-        self.wind_speed = wind_speed # Base wind speed in km/h
+    def __init__(
+        self,
+        wind_speed: float = 120.0,
+        track_heading_deg: float = 270.0,
+        track_speed_kmh: float = 25.0,
+        rmax_km: float = 30.0,
+        central_pressure_hPa: float = 950.0
+    ):
+        self.wind_speed = wind_speed  # Vmax in km/h
+        self.track_heading_deg = track_heading_deg
+        self.track_speed_kmh = track_speed_kmh
+        self.rmax_km = rmax_km
+        self.central_pressure_hPa = central_pressure_hPa
         self.eye_lat = None
         self.eye_lon = None
 
     def generate_prior(self, graph: nx.Graph) -> None:
         """Assign cyclone hazard priors based on coastal proximity."""
-        # Cyclone threat comes from the coast (storm surge + direct wind impact)
         max_dist = 1.0
-        
-        # Calculate max coastal distance to normalize
         distances = []
         for n_id, data in graph.nodes(data=True):
             d = data.get('dist_to_coast')
@@ -30,12 +40,10 @@ class CycloneModule(object):
                 dist_to_coast = 999999.0
             
             if dist_to_coast > 100000.0:
-                # If synthetic or no coast, assume generic flat risk
                 coast_risk = 0.5
             else:
                 coast_risk = 1.0 - (dist_to_coast / max(1.0, max_dist))
                 
-            # Storm surge (coast) + wind (base)
             cyclone_risk = 0.6 * coast_risk + 0.4 * (self.wind_speed / 200.0)
             p_danger = max(0.05, min(0.95, cyclone_risk))
             
@@ -45,33 +53,98 @@ class CycloneModule(object):
             else:
                 graph.nodes[n_id]['status'] = "SAFE"
 
+    def get_holland_wind(self, r_km: float, lat_deg: float) -> float:
+        """Holland 1980 parametric surface wind model.
+        Returns surface wind speed in km/h at radial distance r_km.
+        """
+        if r_km < 0.5:
+            return self.wind_speed * 0.1
+            
+        rho_air = 1.15  # kg/m³
+        e = math.e
+        # Pressure deficit in Pa (1013 - central_pressure)
+        delta_P_Pa = (1013.0 - self.central_pressure_hPa) * 100.0
+        
+        # Holland B shape factor (bounded 1.0 to 2.5)
+        Vmax_ms = self.wind_speed / 3.6
+        B = max(1.0, min(2.5, (Vmax_ms**2 * rho_air * e) / delta_P_Pa))
+        
+        # Coriolis parameter
+        f = 2.0 * 7.2921e-5 * math.sin(math.radians(abs(lat_deg)))
+        
+        r_m = r_km * 1000.0
+        Rmax_m = self.rmax_km * 1000.0
+        ratio = (Rmax_m / r_m) ** B
+        
+        term1 = (B / rho_air) * delta_P_Pa * ratio * math.exp(-ratio)
+        term2 = (r_m * f / 2.0) ** 2
+        Vg = math.sqrt(max(0.0, term1 + term2)) - (r_m * f / 2.0)
+        
+        # Surface wind reduction factor: 0.75
+        return Vg * 0.75 * 3.6
+
     def update_simulation_step(self, graph: nx.Graph, step: int) -> list:
         newly_blocked_edges = []
-        
-        import random
         random.seed(step)
         
-        # Wind gusts randomly tear off roofs or drop trees (blocking roads)
-        gust_chance = self.wind_speed / 1000.0
-        
+        # 1. Initialize eye coordinates to graph center if not set
+        if self.eye_lat is None or self.eye_lon is None:
+            lats = [d.get('lat') for _, d in graph.nodes(data=True) if d.get('lat')]
+            lons = [d.get('lon') for _, d in graph.nodes(data=True) if d.get('lon')]
+            if lats and lons:
+                self.eye_lat = sum(lats) / len(lats)
+                self.eye_lon = sum(lons) / len(lons)
+            else:
+                self.eye_lat = 0.0
+                self.eye_lon = 0.0
+        else:
+            # Move storm eye coordinates along track trajectory
+            # 1 degree lat ≈ 111km. Speed is in km/h.
+            # Assuming step represents 10 minutes of real time
+            step_hours = 10.0 / 60.0
+            dist_moved = self.track_speed_kmh * step_hours
+            heading_rad = math.radians(self.track_heading_deg)
+            self.eye_lat += (dist_moved * math.cos(heading_rad)) / 111.0
+            self.eye_lon += (dist_moved * math.sin(heading_rad)) / (111.0 * math.cos(math.radians(self.eye_lat)))
+
         for n_id, data in graph.nodes(data=True):
             lat = data.get('y', data.get('lat'))
             lon = data.get('x', data.get('lon'))
             if lat is None or lon is None:
                 continue
+
+            # Calculate distance to storm eye in kilometers
+            dist_km = math.hypot(lat - self.eye_lat, lon - self.eye_lon) * 111.0
+            
+            # Holland B gradient wind speed
+            local_wind = self.get_holland_wind(dist_km, lat)
+            
+            # Inland wind decay multiplier: NWS guidance (loses ~8% wind speed per km inland)
+            dist_to_coast_m = data.get('dist_to_coast', 0.0)
+            if dist_to_coast_m > 0:
+                dist_to_coast_km = dist_to_coast_m / 1000.0
+                inland_decay = math.exp(-0.08 * dist_to_coast_km)
+                local_wind *= inland_decay
                 
+            # Storm surge depth estimate based on wind-stress (Vmax^2)
+            if dist_to_coast_m <= 10000.0:  # within 10km of coast
+                # alpha constant = 0.0023, standard shelf depth = 30m
+                Vmax_ms = self.wind_speed / 3.6
+                peak_surge = 0.0023 * Vmax_ms**2 * (50.0 / 30.0)
+                dist_coast_km = dist_to_coast_m / 1000.0
+                surge_depth = peak_surge * math.exp(-0.07 * dist_coast_km)
+                data['water_level'] = max(data.get('water_level', 0.0), surge_depth)
+                
+            # Wind gusts randomly cause damage proportional to local wind speed and vulnerability
+            gust_chance = local_wind / 1000.0
             current_danger = data.get('p_danger', 0.0)
             
-            # Chance of sudden local wind gust causing damage
             if random.random() < gust_chance * current_danger:
-                # Damage structure
                 next_danger = min(1.0, current_danger + 0.1)
                 data['p_danger'] = next_danger
                 
-                # Severe structural damage causes road blockages from debris
                 if next_danger > 0.90 and data.get('status') != "DANGER" and data.get('node_type') not in ("HOSPITAL", "SHELTER"):
                     data['status'] = "DANGER"
-                    
                     for neighbor in list(graph.neighbors(n_id)):
                         if not graph.has_edge(n_id, neighbor):
                             continue
@@ -81,3 +154,4 @@ class CycloneModule(object):
                             newly_blocked_edges.append((n_id, neighbor))
                             
         return newly_blocked_edges
+

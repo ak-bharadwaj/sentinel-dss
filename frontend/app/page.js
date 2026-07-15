@@ -106,6 +106,7 @@ export default function Home() {
   const [eventLog, setEventLog] = useState([]);
   const [activeTab, setActiveTab] = useState("telemetry"); // "telemetry", "analytics", "experiments"
   const [sidebarTab, setSidebarTab] = useState("incidents"); // "incidents", "scouts", "agents"
+  const [magnitudeMw, setMagnitudeMw] = useState(6.5);
   const [experimentResults, setExperimentResults] = useState([]);
   const [showGuide, setShowGuide] = useState(true);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -736,6 +737,7 @@ export default function Home() {
       num_helicopters: Number(overrideParams.numHelicopters ?? numHelicopters),
       num_trucks: Number(overrideParams.numTrucks ?? numTrucks),
       num_cars: Number(overrideParams.numCars ?? numCars),
+      magnitude_mw: Number(overrideParams.magnitudeMw ?? magnitudeMw),
       custom_shelters: customShelters,
       custom_hospitals: customHospitals
     };
@@ -1157,8 +1159,23 @@ export default function Home() {
                     <select className="select-input-sidebar" value={disasterType} onChange={e => setDisasterType(e.target.value)} style={{ width: "100%", padding: "8px 10px", fontSize: "0.75rem" }}>
                       <option value="FLOOD">🌊 Flood (Dynamic Road Blocks)</option>
                       <option value="EARTHQUAKE">🌍 Earthquake (Structural Damage)</option>
+                      <option value="CYCLONE">🌀 Cyclone (Coastal Storm Surge)</option>
                       <option value="WILDFIRE">🔥 Wildfire (Expanding Zones)</option>
                     </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: "0.6rem", color: "#94a3b8", display: "block", marginBottom: "4px" }}>
+                      INTENSITY MAGNITUDE ({magnitudeMw.toFixed(1)} Mw / Index)
+                    </label>
+                    <input
+                      type="range"
+                      min="5.0"
+                      max="9.0"
+                      step="0.1"
+                      value={magnitudeMw}
+                      onChange={e => setMagnitudeMw(parseFloat(e.target.value))}
+                      style={{ width: "100%", accentColor: "#6366f1" }}
+                    />
                   </div>
                 </div>
               </div>

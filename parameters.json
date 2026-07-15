@@ -1,0 +1,7 @@
+{
+  "_comment": "Calibration overrides representing a severe historical cyclone (e.g. Cyclone Nisarga 2020 near Mumbai / Typhoon Hagibis 2019 near Tokyo). Feeds values into Central Parameter Registry.",
+  "max_simulation_steps": 120,
+  "flood_car_blocked_m": 0.40,
+  "flood_bridge_blocked_m": 1.20,
+  "geva_exploration_weight": 0.15
+}

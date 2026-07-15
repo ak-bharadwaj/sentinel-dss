@@ -1,0 +1,44 @@
+{
+  "_comment": "Routing cost weights. All values are MODELING ASSUMPTIONS. w_time, w_risk, w_uncertainty are dimensionless normalised weights that should sum roughly to 1-4 depending on operational priority.",
+  "_version": "1.0",
+
+  "weights": {
+    "w_time":        1.0,
+    "w_risk":        2.0,
+    "w_uncertainty": 0.5
+  },
+
+  "safe_route": {
+    "_comment": "Multiplier applied to w_risk when the operator enables safe-route mode (maximum risk aversion).",
+    "risk_multiplier": 3.0
+  },
+
+  "normalisation": {
+    "_comment": "Reference time in seconds used to normalise travel cost to a dimensionless scale. A 1 km road at 10 km/h base speed = 360s = 1.0 unit.",
+    "reference_time_s": 360.0
+  },
+
+  "bpr_congestion": {
+    "_comment": "Bureau of Public Roads (BPR) function parameters: travel_time_factor = 1 + alpha * (flow/capacity)^beta. Standard values from US Highway Capacity Manual.",
+    "alpha": 0.15,
+    "beta":  4.0
+  },
+
+  "road_capacity_vehicles_per_hour": {
+    "_comment": "Approximate per-lane capacity by OSM highway tag. Modeling approximation.",
+    "motorway":    2000,
+    "primary":     1200,
+    "secondary":    800,
+    "tertiary":     600,
+    "residential":  400,
+    "service":      200,
+    "track":        100
+  },
+
+  "helicopter": {
+    "cruise_speed_kmh":         180.0,
+    "wind_limit_kmh":            55.0,
+    "smoke_density_no_fly":       0.8,
+    "no_helipad_approach_cost":   0.5
+  }
+}

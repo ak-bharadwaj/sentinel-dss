@@ -1,0 +1,50 @@
+{
+  "_comment": "Sensor baseline accuracy values. These are modeling ASSUMPTIONS, not empirically validated constants. Calibrate against your operational field data before production use.",
+  "_version": "1.0",
+
+  "sensor_base_accuracy": {
+    "DRONE_CAMERA":       0.96,
+    "HUMAN_VISUAL":       0.92,
+    "SATELLITE_OPTICAL":  0.81,
+    "CITIZEN_REPORT":     0.55,
+    "ACOUSTIC":           0.78,
+    "THERMAL":            0.88
+  },
+
+  "sensor_max_range_m": {
+    "DRONE_CAMERA":       300.0,
+    "HUMAN_VISUAL":        80.0,
+    "SATELLITE_OPTICAL":  600.0,
+    "CITIZEN_REPORT":      30.0,
+    "ACOUSTIC":           120.0,
+    "THERMAL":            250.0
+  },
+
+  "confidence_bounds": {
+    "_comment": "min_eta: the lowest reliability an observation can have, regardless of degradation. Must be > 0.5 for Bayesian update to be directionally meaningful. Make configurable for adversarial / extreme-degradation scenarios.",
+    "min_eta":  0.51,
+    "max_eta":  0.99,
+    "min_sensor_confidence_ceiling": 0.50
+  },
+
+  "age_decay_rates_per_min": {
+    "_comment": "How fast observation reliability decays with age. Disaster-specific. Higher = faster decay. Modeling assumption.",
+    "FLOOD":      0.015,
+    "EARTHQUAKE": 0.060,
+    "CYCLONE":    0.030,
+    "WILDFIRE":   0.045,
+    "DEFAULT":    0.020
+  },
+
+  "visibility_degradation": {
+    "optical_sensor_types": ["DRONE_CAMERA", "HUMAN_VISUAL", "SATELLITE_OPTICAL"],
+    "smoke_visibility_factor":      0.40,
+    "base_visibility_reference_km": 5.0,
+    "min_visibility_factor":        0.30
+  },
+
+  "wind_degradation": {
+    "drone_wind_threshold_kmh": 30.0,
+    "drone_wind_decay_per_kmh": 0.01
+  }
+}
