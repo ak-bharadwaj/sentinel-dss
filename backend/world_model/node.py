@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Float, Integer, DateTime, Boolean
+from sqlalchemy import Column, String, Float, Integer, DateTime, Boolean, JSON
 from datetime import datetime
 from backend.database import Base
 
@@ -44,3 +44,15 @@ class NodeModel(Base):
             "is_tall_building_zone": bool(self.is_tall_building_zone),
             "last_observed": self.last_observed.isoformat() if self.last_observed else None
         }
+
+class MissionState(Base):
+    __tablename__ = "mission_state"
+    id = Column(String, primary_key=True)
+    simulation_time = Column(Integer, default=0)
+    active_baseline = Column(String, default="AMIS-RU")
+    disaster_type = Column(String, default="FLOOD")
+    total_survivors_saved = Column(Integer, default=0)
+    initial_total_population = Column(Integer, default=0)
+    history = Column(JSON, default=list)
+    agents_state = Column(JSON, default=list)
+

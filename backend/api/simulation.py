@@ -295,11 +295,51 @@ def start_simulation(config: SimulationStartSchema):
 
 @router.post("/save")
 def save_mission(db: Session = Depends(get_db)):
+    """Saves the current mission state to the database."""
+    from backend.world_model.node import MissionState
+    from backend.simulation.engine import simulation_engine
+
+    # Serialize agents state
+    agents_state = []
+    for agent in simulation_engine.agents.values():
+        agents_state.append({
+            "id": agent.id,
+            "agent_type": "SCOUT" if hasattr(agent, 'is_scout') or "scout" in agent.id.lower() else "RESCUE",
+            "current_node": agent.current_node,
+            "status": agent.status.value if hasattr(agent.status, 'value') else str(agent.status),
+            "next_node": agent.next_node,
+            "target_node": agent.target_node,
+            "route": agent.route,
+            "full_planned_route": getattr(agent, 'full_planned_route', []),
+            "progress_on_edge": agent.progress_on_edge,
+            "action_timer": agent.action_timer,
+            "vehicle_type": getattr(agent, 'vehicle_type', 'STANDARD_CAR'),
+            "capacity": getattr(agent, 'capacity', 4),
+            "survivors_onboard": getattr(agent, 'survivors_onboard', 0),
+            "zone_assignment": getattr(agent, 'zone_assignment', None)
+        })
+
+    # Upsert mission state record
+    state = db.query(MissionState).filter(MissionState.id == "current_mission").first()
+    if not state:
+        state = MissionState(id="current_mission")
+        db.add(state)
+
+    state.simulation_time = simulation_engine.simulation_time
+    state.active_baseline = simulation_engine.active_baseline
+    state.disaster_type = simulation_engine.disaster_type
+    state.total_survivors_saved = simulation_engine.total_survivors_saved
+    state.initial_total_population = simulation_engine.initial_total_population
+    state.history = getattr(simulation_engine, 'history', [])
+    state.agents_state = agents_state
+
+    db.commit()
     return {"status": "Success", "message": "Mission state saved successfully."}
 
 @router.post("/load")
 def load_mission(db: Session = Depends(get_db)):
     """Loads the mission state from the database."""
+    from backend.world_model.node import MissionState
     from backend.simulation.engine import simulation_engine
     from backend.agents.scout import ScoutAgent
     from backend.agents.rescue import RescueAgent
