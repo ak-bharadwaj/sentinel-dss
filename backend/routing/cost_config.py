@@ -14,7 +14,8 @@ except Exception:
 WEIGHTS: Dict[str, float] = _weights_cfg.get("weights", {
     "w_time":        1.0,
     "w_risk":        2.0,
-    "w_uncertainty": 0.5
+    "w_uncertainty": 0.5,
+    "w_terrain":     0.8,   # Terrain cost weight (slope + surface quality)
 })
 
 SAFE_ROUTE_MULTIPLIER: float = _weights_cfg.get("safe_route", {}).get("risk_multiplier", 3.0)

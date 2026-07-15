@@ -82,6 +82,24 @@ class SentinelParameters:
     grid_size_lat: float = 0.02
     grid_size_lon: float = 0.02
 
+    # -----------------------------------------------------------------------
+    # Terrain Intelligence Layer
+    # Added by: Sentinel Terrain Intelligence Framework V1
+    # -----------------------------------------------------------------------
+    # Flood: minimum effective_elevation (m) to classify a road as elevated
+    flood_elevated_road_min_m: float = 2.0
+    # Flood: tunnel fill rate multiplier (tunnels are below grade — fill faster)
+    flood_tunnel_fill_rate: float = 2.5
+
+    # Terrain accessibility score weights (used to compute node.accessibility_score)
+    terrain_acc_weight_slope:      float = 0.40   # slope contribution
+    terrain_acc_weight_elevation:  float = 0.25   # low-elevation flood risk contribution
+    terrain_acc_weight_drainage:   float = 0.25   # high-TWI waterlogging contribution
+    terrain_acc_weight_coastal:    float = 0.10   # coastal surge risk contribution
+
+    # Routing terrain cost weight (w_terrain in WEIGHTS dict)
+    routing_terrain_weight: float = 0.8
+
     def load(self, path: str = "parameters.json") -> "SentinelParameters":
         """Load overrides from a JSON file. Silently skips if file not found."""
         if os.path.exists(path):

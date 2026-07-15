@@ -64,11 +64,24 @@ def calculate_edge_cost(graph: nx.Graph, u: str, v: str, edge_data: Dict[str, An
     from backend.simulation.engine import simulation_engine
     is_safe_route = getattr(simulation_engine, 'safe_route_mode', False)
     risk_mult = SAFE_ROUTE_MULTIPLIER if is_safe_route else 1.0
-    
+
     risk_penalty = WEIGHTS["w_risk"] * p_danger_edge * risk_mult
     uncertainty_penalty = WEIGHTS["w_uncertainty"] * (1.0 - confidence_edge)
-    
-    return time_cost_norm + risk_penalty + uncertainty_penalty
+
+    # Terrain cost — slope + surface quality, vehicle-aware
+    terrain_penalty = 0.0
+    if vehicle_type not in ("HELICOPTER", "ZODIAC_BOAT"):
+        slope_u = node_u.get("slope", 0.0)
+        slope_v = node_v.get("slope", 0.0)
+        avg_slope = (slope_u + slope_v) / 2.0
+        from backend.world_model.terrain.slope import slope_accessibility_multiplier
+        slope_mult = slope_accessibility_multiplier(avg_slope, vehicle_type)
+        # Accessibility score: lower score → higher cost
+        acc_u = node_u.get("accessibility_score", 1.0)
+        acc_v = node_v.get("accessibility_score", 1.0)
+        terrain_penalty = WEIGHTS.get("w_terrain", 0.8) * (slope_mult - 1.0) * (1.0 - min(acc_u, acc_v))
+
+    return time_cost_norm + risk_penalty + uncertainty_penalty + terrain_penalty
 
 
 def update_grid_edge_costs(graph: nx.Graph) -> None:

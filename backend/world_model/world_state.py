@@ -155,7 +155,32 @@ class WorldState:
                     geometry=geometry
                 )
 
-            # 4. Corrupt coordinator's belief graph in memory prior to DB save
+            # 4. Terrain Intelligence — enrich ground_truth with terrain properties.
+            #    Runs ONCE per region. Uses persistent terrain_cache (survives restarts).
+            #    Never called during simulation steps.
+            try:
+                from backend.world_model.terrain import TerrainProcessor
+                _terrain_processor = TerrainProcessor(force_refresh=False)
+                _terrain_processor.enrich(self.ground_truth, osm_tags_map=None)
+                # Propagate terrain attributes to belief graph before corruption
+                for n_id, data in self.ground_truth.nodes(data=True):
+                    if n_id in self.belief.nodes:
+                        for attr in ("terrain_elevation", "structural_offset", "effective_elevation",
+                                     "elevation", "slope", "aspect", "twi", "terrain_class",
+                                     "vs30_terrain", "accessibility_score", "bridge_amplification",
+                                     "drainage_accumulation_rate"):
+                            if attr in data:
+                                self.belief.nodes[n_id][attr] = data[attr]
+                for u, v, data in self.ground_truth.edges(data=True):
+                    if self.belief.has_edge(u, v):
+                        for attr in ("elevation_offset", "effective_elevation", "is_tunnel"):
+                            if attr in data:
+                                self.belief.edges[u, v][attr] = data[attr]
+                print("[WorldState] Terrain Intelligence enrichment complete.")
+            except Exception as _terrain_exc:
+                print(f"[WorldState] TerrainProcessor warning (non-fatal): {_terrain_exc}")
+
+            # 5. Corrupt coordinator's belief graph in memory prior to DB save
             from backend.simulation.corruption import corrupt_belief_graph
             self.belief = corrupt_belief_graph(self.belief, corruption_level)
 

@@ -126,14 +126,22 @@ class CycloneModule(object):
                 inland_decay = math.exp(-0.08 * dist_to_coast_km)
                 local_wind *= inland_decay
                 
-            # Storm surge depth estimate based on wind-stress (Vmax^2)
-            if dist_to_coast_m <= 10000.0:  # within 10km of coast
-                # alpha constant = 0.0023, standard shelf depth = 30m
+            # Storm surge — only inundates nodes if surge depth EXCEEDS effective elevation
+            if dist_to_coast_m <= 10000.0:  # within 10 km of coast
                 Vmax_ms = self.wind_speed / 3.6
                 peak_surge = 0.0023 * Vmax_ms**2 * (50.0 / 30.0)
                 dist_coast_km = dist_to_coast_m / 1000.0
                 surge_depth = peak_surge * math.exp(-0.07 * dist_coast_km)
-                data['water_level'] = max(data.get('water_level', 0.0), surge_depth)
+
+                # Effective elevation check: surge only reaches above-ground if it
+                # exceeds the road surface height (terrain + structural offset)
+                eff_elev = float(data.get('effective_elevation', data.get('elevation', 5.0)))
+                water_above_road = surge_depth - eff_elev
+
+                if water_above_road > 0:
+                    # Water reaches this road surface
+                    data['water_level'] = max(data.get('water_level', 0.0), water_above_road)
+                # else: elevated node — surge doesn't reach road surface
                 
             # Wind gusts randomly cause damage proportional to local wind speed and vulnerability
             gust_chance = local_wind / 1000.0
