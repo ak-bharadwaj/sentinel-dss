@@ -319,16 +319,8 @@ def load_osm_xml(file_path: str) -> Tuple[List[NodeModel], List[EdgeModel]]:
         # Parse OSM tags
         tags = {t.attrib["k"]: t.attrib["v"] for t in child.findall("tag")}
         
-        # Determine if near coast
-        is_coastal_flag = False
-        name = tags.get("name", "").lower()
-        if abs(lat - 19.0760) < 0.2 and abs(lon - 72.8777) < 0.2:  # Mumbai
-            if lon < 72.828 or lon > 72.895 or "beach" in name or "marine" in name or "drive" in name or "sea" in name or "promenade" in name or "worli" in name or "chowpatty" in name:
-                is_coastal_flag = True
-        else:
-            is_coastal_flag = "coast" in name or "marine" in name or "beach" in name
-            
         is_bridge_flag = False
+        name = tags.get("name", "").lower()
         if tags.get("highway") == "bridge" or tags.get("bridge") == "yes" or "bridge" in tags or "flyover" in name or "link" in name:
             is_bridge_flag = True
         
@@ -370,11 +362,11 @@ def load_osm_xml(file_path: str) -> Tuple[List[NodeModel], List[EdgeModel]]:
             status="SAFE",
             last_observed=datetime.utcnow()
         )
-        node.is_coastal = is_coastal_flag
         node.is_bridge = is_bridge_flag
         # Calculate proximity distances (meters)
         node.dist_to_water = min_dist_tree(lat, lon, tree_water)
         node.dist_to_coast = min_dist_tree(lat, lon, tree_coast)
+        node.is_coastal = (node.dist_to_coast < 200.0)
         node.is_tall_building_zone = min_dist_tree(lat, lon, tree_tall) < 100.0 # within 100m
         
         nodes_map[n_id] = node
