@@ -1,10 +1,6 @@
 import networkx as nx  # type: ignore
 from backend.agents.fleet_config import get_effective_speed
 from typing import Optional, Tuple, List, Dict, Any
-
-import networkx as nx  # type: ignore
-from backend.agents.fleet_config import get_effective_speed
-from typing import Optional, Tuple, List, Dict, Any
 from backend.routing.cost_config import WEIGHTS, SAFE_ROUTE_MULTIPLIER, REFERENCE_TIME_S
 from backend.routing.helicopter_model import helicopter_edge_cost
 

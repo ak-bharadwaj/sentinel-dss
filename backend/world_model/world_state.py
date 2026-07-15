@@ -393,17 +393,36 @@ class WorldState:
 
     @lock_db
     def get_nearest_node(self, lat: float, lon: float) -> Optional[Any]:
+        """Find nearest node using spatial KD-tree (O(log V)) when scipy is available.
+        Falls back to linear scan O(V) otherwise.
+        """
         from backend.world_model.graph_builder import haversine_distance
-        best_id = None
-        best_dist = float('inf')
-        for node_id, node_data in self.belief.nodes(data=True):
-            n_lat = node_data.get('y', node_data.get('y', node_data.get('lat')))
-            n_lon = node_data.get('x', node_data.get('x', node_data.get('lon')))
-            if n_lat is not None and n_lon is not None:
+        nodes_data = [(n_id, d) for n_id, d in self.belief.nodes(data=True)
+                      if d.get('lat') is not None or d.get('y') is not None]
+        if not nodes_data:
+            return None
+
+        try:
+            import numpy as np
+            from scipy.spatial import cKDTree  # type: ignore
+            coords = np.array([
+                (d.get('lat', d.get('y', 0.0)), d.get('lon', d.get('x', 0.0)))
+                for _, d in nodes_data
+            ])
+            tree = cKDTree(coords)
+            _, idx = tree.query([lat, lon])
+            return nodes_data[idx][0]
+        except ImportError:
+            # Fallback: linear scan
+            best_id = None
+            best_dist = float('inf')
+            for node_id, node_data in nodes_data:
+                n_lat = node_data.get('lat', node_data.get('y', 0.0))
+                n_lon = node_data.get('lon', node_data.get('x', 0.0))
                 d = haversine_distance(n_lat, n_lon, lat, lon)
                 if d < best_dist:
                     best_dist = d
                     best_id = node_id
-        return best_id
+            return best_id
 
 world_state = WorldState()

@@ -1,3 +1,4 @@
+import math
 import networkx as nx  # type: ignore
 from backend.config import settings
 from backend.belief.sensor_model import (
@@ -48,7 +49,7 @@ def apply_scout_observation(
         visibility_km=visibility_km,
         distance_m=0.0,  # At the node
         disaster_type=getattr(settings, "DISASTER_TYPE", "FLOOD"),
-        wind_speed_kmh=wind_speed_khm if 'wind_speed_khm' in locals() else wind_speed_kmh,
+        wind_speed_kmh=wind_speed_kmh,
         smoke_present=smoke_present
     )
     quality = evaluate_observation_quality(context)
