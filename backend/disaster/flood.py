@@ -66,7 +66,7 @@ class FloodModule(object):
             # Use effective_elevation so bridges/flyovers get credit
             elevations[n_id] = max(0.5, self._eff_elev(data))
 
-        max_dist = max(distances.values()) if distances else 1.0
+        max_dist = max(1.0, max(distances.values())) if distances else 1.0
         max_elev = max(elevations.values()) if elevations else 1.0
 
         for n_id in graph.nodes:
@@ -132,14 +132,14 @@ class FloodModule(object):
             data["water_level"] = data.get("water_level", 0.0) + water_gain
 
         # 2. Gravity-driven hydrological spread using effective head
-        water_diffs = {n_id: 0.0 for n_id in graph.nodes}
+        # We track outflows first to prevent generating water out of nothing (violating mass conservation)
+        outflows = {n_id: [] for n_id in graph.nodes}
         for u, v, edata in graph.edges(data=True):
             u_data = graph.nodes[u]
             v_data = graph.nodes[v]
 
             w_u = u_data.get("water_level", 0.0)
             w_v = v_data.get("water_level", 0.0)
-            # Use effective elevation for hydraulic head (bridges don't retain water at +10m)
             elev_u = self._eff_elev(u_data)
             elev_v = self._eff_elev(v_data)
 
@@ -148,16 +148,27 @@ class FloodModule(object):
             head_diff = head_u - head_v
 
             if head_diff > 0.0 and w_u > 0.0:
-                flow = min(w_u, head_diff * 0.12)
-                water_diffs[u] -= flow
-                water_diffs[v] += flow
+                outflows[u].append((v, head_diff * 0.12))
             elif head_diff < 0.0 and w_v > 0.0:
-                flow = min(w_v, -head_diff * 0.12)
-                water_diffs[v] -= flow
-                water_diffs[u] += flow
+                outflows[v].append((u, -head_diff * 0.12))
+
+        water_diffs = {n_id: 0.0 for n_id in graph.nodes}
+        for u, flows in outflows.items():
+            if not flows:
+                continue
+            total_potential_outflow = sum(f[1] for f in flows)
+            w_u = graph.nodes[u].get("water_level", 0.0)
+            scale = 1.0
+            if total_potential_outflow > w_u:
+                scale = w_u / total_potential_outflow
+            for v, flow in flows:
+                scaled_flow = flow * scale
+                water_diffs[u] -= scaled_flow
+                water_diffs[v] += scaled_flow
 
         for n_id, diff in water_diffs.items():
             graph.nodes[n_id]["water_level"] = max(0.0, graph.nodes[n_id].get("water_level", 0.0) + diff)
+
 
         # 3. Node blockage: water_depth_above_road = water_level - effective_elevation
         #    (negative for elevated roads → they never flood until water truly rises above them)

@@ -33,7 +33,8 @@ def bssa14_pga(Mw: float, Rjb_km: float, Vs30: float = 360.0) -> float:
     F_P = -1.5765 * math.log(R / 1.0) - 0.00701 * (R - 1.0)
 
     Vref = 760.0
-    F_S = 0.0 if Vs30 >= Vref else -0.596 * math.log(Vs30 / Vref)
+    Vs30_clamped = max(100.0, Vs30)
+    F_S = 0.0 if Vs30_clamped >= Vref else -0.596 * math.log(Vs30_clamped / Vref)
 
     ln_PGA = F_E + F_P + F_S
     return math.exp(ln_PGA)
@@ -90,7 +91,7 @@ class EarthquakeModule(object):
             vs30 = self.get_vs30(data)
             soils[n_id] = 1.0 + max(0.0, (760.0 - vs30) / 400.0)
 
-        max_fault_dist = max(distances.values()) if distances else 1.0
+        max_fault_dist = max(1.0, max(distances.values())) if distances else 1.0
 
         for n_id, data in graph.nodes(data=True):
             dist = distances[n_id]

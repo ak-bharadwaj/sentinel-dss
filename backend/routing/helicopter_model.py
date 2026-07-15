@@ -28,7 +28,7 @@ def helicopter_edge_cost(distance_m: float, node_u_data: dict, node_v_data: dict
     transit_hours = dist_km / HELI_SPEED_KMH
     transit_seconds = transit_hours * 3600.0
     
-    cost_norm = transit_seconds / REFERENCE_TIME_S
+    cost_norm = transit_seconds / max(1.0, REFERENCE_TIME_S)
     
     # Helipad availability check
     has_pad = node_v_data.get('has_helipad', False) or node_v_data.get('node_type') in ('HOSPITAL', 'SHELTER')

@@ -78,9 +78,10 @@ class WildfireModule(object):
                 graph.nodes[highest_fuel_node]['fire_intensity'] = 100.0
 
         # Calculate wind angle components for directional bias (in radians)
+        # Using standard meteorological wind coordinates matching standard vectors (0 deg is North, 90 deg is East)
         wind_rad = math.radians(self.wind_direction_deg)
-        wind_vector = (math.cos(wind_rad), math.sin(wind_rad))
-
+        wind_vector = (math.sin(wind_rad), math.cos(wind_rad))
+ 
         # 2. Propagate active fire front to adjacent nodes
         active_fires = [n_id for n_id, data in graph.nodes(data=True) if data.get('status') == 'FIRE']
         
@@ -88,24 +89,26 @@ class WildfireModule(object):
             lat_u = graph.nodes[fire_node].get('lat', 0.0)
             lon_u = graph.nodes[fire_node].get('lon', 0.0)
             fuel_u = graph.nodes[fire_node].get('fuel_load', 0.05)
+            slope_u = graph.nodes[fire_node].get('slope', 0.0)
             
-            ros = self.get_rate_of_spread(fuel_u)
+            # Rate of spread scales with slope percentage (slope in radians/degrees * 100)
+            ros = self.get_rate_of_spread(fuel_u, slope_pct=slope_u * 100.0)
             # Map step size to minutes (step is 10 minutes of active time)
             spread_dist_m = ros * 10.0
             
             for neighbor in list(graph.neighbors(fire_node)):
                 neigh_data = graph.nodes[neighbor]
                 if neigh_data.get('status') == 'FIRE':
-                    continue
+                     continue
                 
                 lat_v = neigh_data.get('lat', 0.0)
                 lon_v = neigh_data.get('lon', 0.0)
                 
                 # Direction vector of edge
                 dy = lat_v - lat_u
-                dx = lon_v - lon_u
+                dx = (lon_v - lon_u) * math.cos(math.radians((lat_u + lat_v) / 2.0))
                 dist_degrees = math.hypot(dx, dy)
-                if dist_degrees == 0:
+                if dist_degrees < 1e-9:
                     continue
                 
                 # Normalize direction
@@ -117,7 +120,9 @@ class WildfireModule(object):
                 wind_bias = 1.0 + max(0.0, dot_prod) * 2.0  # 3x boost in downwind direction
                 
                 effective_spread_dist = spread_dist_m * wind_bias
-                actual_dist_m = dist_degrees * 111000.0
+                # Calculate accurate physical distance using haversine metric (unit: meters)
+                from backend.world_model.graph_builder import haversine_distance
+                actual_dist_m = haversine_distance(lat_u, lon_u, lat_v, lon_v) * 1000.0
                 
                 # Probability of ignition decays with distance
                 ignition_prob = math.exp(-actual_dist_m / max(50.0, effective_spread_dist))

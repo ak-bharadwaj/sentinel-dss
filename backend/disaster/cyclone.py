@@ -62,8 +62,8 @@ class CycloneModule(object):
             
         rho_air = 1.15  # kg/m³
         e = math.e
-        # Pressure deficit in Pa (1013 - central_pressure)
-        delta_P_Pa = (1013.0 - self.central_pressure_hPa) * 100.0
+        # Pressure deficit in Pa (1013 - central_pressure), clamped for stability
+        delta_P_Pa = max(100.0, (1013.0 - self.central_pressure_hPa) * 100.0)
         
         # Holland B shape factor (bounded 1.0 to 2.5)
         Vmax_ms = self.wind_speed / 3.6
@@ -105,7 +105,7 @@ class CycloneModule(object):
             dist_moved = self.track_speed_kmh * step_hours
             heading_rad = math.radians(self.track_heading_deg)
             self.eye_lat += (dist_moved * math.cos(heading_rad)) / 111.0
-            self.eye_lon += (dist_moved * math.sin(heading_rad)) / (111.0 * math.cos(math.radians(self.eye_lat)))
+            self.eye_lon += (dist_moved * math.sin(heading_rad)) / (111.0 * max(0.01, math.cos(math.radians(self.eye_lat))))
 
         for n_id, data in graph.nodes(data=True):
             lat = data.get('y', data.get('lat'))
@@ -113,8 +113,8 @@ class CycloneModule(object):
             if lat is None or lon is None:
                 continue
 
-            # Calculate distance to storm eye in kilometers
-            dist_km = math.hypot(lat - self.eye_lat, lon - self.eye_lon) * 111.0
+            # Calculate distance to storm eye in kilometers using haversine metric
+            dist_km = haversine_distance(lat, lon, self.eye_lat, self.eye_lon)
             
             # Holland B gradient wind speed
             local_wind = self.get_holland_wind(dist_km, lat)
@@ -144,7 +144,7 @@ class CycloneModule(object):
                 # else: elevated node — surge doesn't reach road surface
                 
             # Wind gusts randomly cause damage proportional to local wind speed and vulnerability
-            gust_chance = local_wind / 1000.0
+            gust_chance = max(0.0, min(1.0, local_wind / 1000.0))
             current_danger = data.get('p_danger', 0.0)
             
             if random.random() < gust_chance * current_danger:

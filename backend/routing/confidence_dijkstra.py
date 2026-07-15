@@ -90,12 +90,19 @@ def find_confidence_route(graph: nx.Graph, source: str, target: str, vehicle_typ
     Returns: (path_list, total_distance, average_confidence) or None.
     """
     weight_key = f'cost_{vehicle_type}'
+    
+    def dynamic_weight(u, v, edge_attrs):
+        cost = edge_attrs.get(weight_key)
+        if cost is None:
+            cost = calculate_edge_cost(graph, u, v, edge_attrs, vehicle_type)
+        return cost
+
     try:
         path = nx.shortest_path(
             graph, 
             source=source, 
             target=target, 
-            weight=weight_key
+            weight=dynamic_weight
         )
         
         # Calculate statistics
