@@ -247,16 +247,7 @@ def start_simulation(config: SimulationStartSchema):
     # 3. Apply custom shelter / hospital designations from the operator
     def _snap_to_nearest_node(lat: float, lon: float):
         """Return the node_id of the nearest graph node to the given coordinates."""
-        import math
-        best_id = None
-        best_dist = float('inf')
-        for node_id, node_data in world_state.belief.nodes(data=True):
-            d = math.hypot((node_data.get('y', node_data.get('y', node_data.get('y', node_data.get('y', node_data.get('lat', 0))))) - lat) * 111000.0,
-                           (node_data.get('x', node_data.get('x', node_data.get('x', node_data.get('x', node_data.get('lon', 0))))) - lon) * 111000.0 * math.cos(math.radians(lat)))
-            if d < best_dist:
-                best_dist = d
-                best_id = node_id
-        return best_id
+        return world_state.get_nearest_node(lat, lon)
 
     for sh in config.custom_shelters:
         lat = sh.get('y', sh.get('y', sh.get('y', sh.get('lat')))) if isinstance(sh, dict) else sh.lat
